@@ -1,0 +1,23 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Input size n
+n = np.arange(1, 101)
+
+# Time complexity
+linear = n
+quadratic = n ** 2
+
+# Plot the curves
+plt.plot(n, linear, label='O(n)', color='blue')
+plt.plot(n, quadratic, label='O(n²)', color='red')
+
+# Graph settings
+plt.xlabel('Input size (n)')
+plt.ylabel('Running time (operations)')
+plt.title('Running Time vs Input Size')
+plt.legend()
+plt.grid(True)
+
+plt.show()
