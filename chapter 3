@@ -1,0 +1,135 @@
+
+import networkx as nx
+import matplotlib.pyplot as plt
+import heapq
+import random
+import time
+import statistics
+
+
+def dijkstra_heap(G, source):
+    """Dijkstra using a binary heap."""
+    dist = {source: 0}
+    pq = [(0, source)]
+
+    while pq:
+        d, u = heapq.heappop(pq)
+
+        if d != dist.get(u, float("inf")):
+            continue
+
+        for v, data in G[u].items():
+            weight = data["weight"]
+            new_dist = d + weight
+
+            if new_dist < dist.get(v, float("inf")):
+                dist[v] = new_dist
+                heapq.heappush(pq, (new_dist, v))
+
+    return dist
+
+
+def dijkstra_array(G, source):
+    """Dijkstra using a linear scan to find the minimum."""
+    dist = {v: float("inf") for v in G}
+    dist[source] = 0
+    unvisited = set(G.nodes())
+
+    while unvisited:
+        u = min(unvisited, key=lambda v: dist[v])
+
+        if dist[u] == float("inf"):
+            break
+
+        unvisited.remove(u)
+
+        for v, data in G[u].items():
+            if v not in unvisited:
+                continue
+
+            new_dist = dist[u] + data["weight"]
+
+            if new_dist < dist[v]:
+                dist[v] = new_dist
+
+    return {v: d for v, d in dist.items()
+            if d != float("inf")}
+
+
+def make_road_graph(n, seed=42):
+    """Connected sparse graph with positive road lengths."""
+    rng = random.Random(seed)
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+
+    # Connect the nodes in a chain to ensure connectivity
+    for i in range(n - 1):
+        G.add_edge(i, i + 1,
+                   weight=rng.randint(1, 100))
+
+    # Add extra road connections
+    extra_edges = 2 * n
+    for _ in range(extra_edges):
+        u = rng.randrange(n)
+        v = rng.randrange(n)
+
+        if u != v:
+            G.add_edge(u, v,
+                       weight=rng.randint(1, 100))
+
+    return G
+
+
+sizes = [100, 250, 500, 1000, 2000]
+heap_times = []
+array_times = []
+
+for n in sizes:
+    G = make_road_graph(n)
+    source = 0
+
+    # Warm-up and correctness check
+    heap_result = dijkstra_heap(G, source)
+    array_result = dijkstra_array(G, source)
+
+    assert heap_result.keys() == array_result.keys()
+    assert all(
+        abs(heap_result[v] - array_result[v]) < 1e-9
+        for v in heap_result
+    )
+
+    # Repeat measurements to reduce timing noise
+    heap_samples = []
+    array_samples = []
+
+    for _ in range(3):
+        start = time.perf_counter()
+        dijkstra_heap(G, source)
+        heap_samples.append(time.perf_counter() - start)
+
+        start = time.perf_counter()
+        dijkstra_array(G, source)
+        array_samples.append(time.perf_counter() - start)
+
+    heap_times.append(statistics.median(heap_samples))
+    array_times.append(statistics.median(array_samples))
+
+    print(
+        f"Nodes: {n:4d} | "
+        f"Heap: {heap_times[-1]:.6f} s | "
+        f"Array: {array_times[-1]:.6f} s"
+    )
+
+
+# Plot actual measured running times
+plt.figure(figsize=(9, 5))
+plt.plot(sizes, heap_times, "o-", label="Binary Heap")
+plt.plot(sizes, array_times, "s-", label="Array-based")
+
+plt.xlabel("Number of nodes (V)")
+plt.ylabel("Running time (seconds)")
+plt.title("Dijkstra: Heap vs Array Priority Queue")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
