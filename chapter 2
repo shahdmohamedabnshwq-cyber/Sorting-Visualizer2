@@ -1,0 +1,459 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sorting Visualizer</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #101827;
+    color: white;
+    text-align: center;
+    padding: 25px 15px;
+}
+
+h1 {
+    color: #38bdf8;
+    margin-bottom: 8px;
+}
+
+p {
+    color: #b8c5d8;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin: 22px auto;
+}
+
+button, select, input {
+    padding: 11px 15px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+}
+
+button {
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #1d4ed8;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+select, input {
+    background: #243247;
+    color: white;
+}
+
+#bars {
+    height: 330px;
+    max-width: 1000px;
+    margin: 25px auto;
+    padding: 12px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+    background: #182438;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.bar {
+    flex: 1;
+    min-width: 2px;
+    max-width: 35px;
+    background: #38bdf8;
+    border-radius: 4px 4px 0 0;
+    transition: height 0.12s, background 0.12s;
+}
+
+.bar.compare {
+    background: #facc15;
+}
+
+.bar.pivot {
+    background: #f97316;
+}
+
+.bar.sorted {
+    background: #22c55e;
+}
+
+.stats {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin: 20px;
+}
+
+.stat {
+    background: #1e293b;
+    padding: 16px 24px;
+    border-radius: 10px;
+    min-width: 150px;
+}
+
+.stat strong {
+    display: block;
+    color: #38bdf8;
+    font-size: 25px;
+    margin-top: 8px;
+}
+
+#status {
+    color: #facc15;
+    min-height: 24px;
+}
+
+footer {
+    margin-top: 25px;
+    color: #94a3b8;
+    font-size: 13px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Sorting Visualizer</h1>
+<p>Visualize Merge Sort and Quick Sort step by step</p>
+
+<div class="controls">
+    <select id="algorithm">
+        <option value="merge">Merge Sort</option>
+        <option value="quick">Quick Sort</option>
+    </select>
+
+    <label>
+        Size
+        <input id="size" type="number"
+               min="5" max="100" value="35"
+               style="width:75px">
+    </label>
+
+    <button id="generate">New Array</button>
+    <button id="start">Start Sorting</button>
+    <button id="pause" disabled>Pause</button>
+    <button id="reset">Reset</button>
+</div>
+
+<div class="stats">
+    <div class="stat">
+        Comparisons
+        <strong id="comparisons">0</strong>
+    </div>
+    <div class="stat">
+        Array Size
+        <strong id="arraySize">35</strong>
+    </div>
+    <div class="stat">
+        Time
+        <strong id="time">0.00 s</strong>
+    </div>
+</div>
+
+<div id="bars"></div>
+<div id="status">Ready to sort!</div>
+
+<footer>
+    Blue = Unsorted | Yellow = Comparing |
+    Orange = Pivot | Green = Sorted
+</footer>
+
+<script>
+const barsContainer = document.getElementById("bars");
+const comparisonsEl = document.getElementById("comparisons");
+const arraySizeEl = document.getElementById("arraySize");
+const timeEl = document.getElementById("time");
+const statusEl = document.getElementById("status");
+
+let original = [];
+let arr = [];
+let comparisons = 0;
+let running = false;
+let paused = false;
+let runId = 0;
+let startTime = 0;
+let elapsedBeforePause = 0;
+
+function generateArray() {
+    stopSorting();
+
+    let size = Number(document.getElementById("size").value);
+    size = Math.max(5, Math.min(100, size || 35));
+    document.getElementById("size").value = size;
+
+    original = Array.from(
+        { length: size },
+        () => Math.floor(Math.random() * 95) + 5
+    );
+
+    arr = [...original];
+    comparisons = 0;
+    elapsedBeforePause = 0;
+
+    comparisonsEl.textContent = "0";
+    arraySizeEl.textContent = size;
+    timeEl.textContent = "0.00 s";
+    statusEl.textContent = "New array generated!";
+
+    renderBars();
+}
+
+function renderBars(active = [], pivot = -1, sorted = []) {
+    barsContainer.innerHTML = "";
+
+    const max = Math.max(...arr, 1);
+
+    arr.forEach((value, index) => {
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.height = (value / max * 100) + "%";
+        bar.title = value;
+
+        if (sorted.includes(index)) {
+            bar.classList.add("sorted");
+        } else if (index === pivot) {
+            bar.classList.add("pivot");
+        } else if (active.includes(index)) {
+            bar.classList.add("compare");
+        }
+
+        barsContainer.appendChild(bar);
+    });
+}
+
+function stopSorting() {
+    runId++;
+    running = false;
+    paused = false;
+
+    document.getElementById("start").disabled = false;
+    document.getElementById("pause").disabled = true;
+    document.getElementById("pause").textContent = "Pause";
+}
+
+function sleep(ms, id) {
+    return new Promise(resolve => {
+        const check = () => {
+            if (id !== runId || !running) {
+                resolve(false);
+            } else if (!paused) {
+                resolve(true);
+            } else {
+                setTimeout(check, 50);
+            }
+        };
+        setTimeout(check, ms);
+    });
+}
+
+async function step(active = [], pivot = -1, delay = 40, id) {
+    if (id !== runId || !running) return false;
+
+    renderBars(active, pivot);
+    comparisonsEl.textContent = comparisons;
+
+    while (paused && running && id === runId) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
+    if (!running || id !== runId) return false;
+    return await sleep(delay, id);
+}
+
+// MERGE SORT
+async function mergeSort(left, right, id) {
+    if (left >= right) return true;
+
+    const mid = Math.floor((left + right) / 2);
+
+    if (!await mergeSort(left, mid, id)) return false;
+    if (!await mergeSort(mid + 1, right, id)) return false;
+
+    const leftPart = arr.slice(left, mid + 1);
+    const rightPart = arr.slice(mid + 1, right + 1);
+
+    let i = 0, j = 0, k = left;
+
+    while (i < leftPart.length && j < rightPart.length) {
+        comparisons++;
+
+        if (!await step([left + i, mid + 1 + j], -1, 45, id))
+            return false;
+
+        if (leftPart[i] <= rightPart[j]) {
+            arr[k++] = leftPart[i++];
+        } else {
+            arr[k++] = rightPart[j++];
+        }
+
+        if (!await step([], -1, 25, id)) return false;
+    }
+
+    while (i < leftPart.length) {
+        arr[k++] = leftPart[i++];
+        if (!await step([k - 1], -1, 20, id)) return false;
+    }
+
+    while (j < rightPart.length) {
+        arr[k++] = rightPart[j++];
+        if (!await step([k - 1], -1, 20, id)) return false;
+    }
+
+    return true;
+}
+
+// QUICK SORT
+async function quickSort(low, high, id) {
+    if (low >= high) return true;
+
+    const pivotValue = arr[high];
+    let i = low - 1;
+
+    for (let j = low; j < high; j++) {
+        comparisons++;
+
+        if (!await step([j], high, 70, id)) return false;
+
+        if (arr[j] < pivotValue) {
+            i++;
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+
+            if (!await step([i, j], high, 50, id))
+                return false;
+        }
+    }
+
+    [arr[i + 1], arr[high]] = [arr[high], arr[i + 1]];
+
+    if (!await step([i + 1], i + 1, 100, id))
+        return false;
+
+    const pivotIndex = i + 1;
+
+    if (!await quickSort(low, pivotIndex - 1, id))
+        return false;
+
+    return await quickSort(pivotIndex + 1, high, id);
+}
+
+async function startSorting() {
+    if (running) return;
+
+    if (arr.length === 0) generateArray();
+
+    running = true;
+    paused = false;
+
+    const id = runId;
+    const selected = document.getElementById("algorithm").value;
+
+    document.getElementById("start").disabled = true;
+    document.getElementById("pause").disabled = false;
+
+    statusEl.textContent =
+        selected === "merge"
+        ? "Running Merge Sort..."
+        : "Running Quick Sort...";
+
+    startTime = performance.now() - elapsedBeforePause;
+
+    const timer = setInterval(() => {
+        if (running && !paused && id === runId) {
+            timeEl.textContent =
+                ((performance.now() - startTime) / 1000).toFixed(2) + " s";
+        }
+    }, 50);
+
+    let completed = false;
+
+    try {
+        if (selected === "merge") {
+            completed = await mergeSort(0, arr.length - 1, id);
+        } else {
+            completed = await quickSort(0, arr.length - 1, id);
+        }
+    } finally {
+        clearInterval(timer);
+
+        if (id === runId) {
+            if (completed && running) {
+                renderBars([], -1, arr.map((_, i) => i));
+                statusEl.textContent = "Sorting completed successfully!";
+                timeEl.textContent =
+                    ((performance.now() - startTime) / 1000).toFixed(2) + " s";
+            }
+
+            running = false;
+            paused = false;
+            document.getElementById("start").disabled = false;
+            document.getElementById("pause").disabled = true;
+            document.getElementById("pause").textContent = "Pause";
+        }
+    }
+}
+
+document.getElementById("generate").addEventListener(
+    "click", generateArray
+);
+
+document.getElementById("start").addEventListener(
+    "click", startSorting
+);
+
+document.getElementById("pause").addEventListener("click", () => {
+    if (!running) return;
+
+    paused = !paused;
+
+    document.getElementById("pause").textContent =
+        paused ? "Resume" : "Pause";
+
+    if (paused) {
+        elapsedBeforePause = performance.now() - startTime;
+        statusEl.textContent = "Sorting paused";
+    } else {
+        startTime = performance.now() - elapsedBeforePause;
+        statusEl.textContent = "Sorting resumed";
+    }
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+    stopSorting();
+    arr = [...original];
+    comparisons = 0;
+    elapsedBeforePause = 0;
+
+    comparisonsEl.textContent = "0";
+    timeEl.textContent = "0.00 s";
+    statusEl.textContent = "Array reset!";
+    renderBars();
+});
+
+generateArray();
+</script>
+
+</body>
+</html>
